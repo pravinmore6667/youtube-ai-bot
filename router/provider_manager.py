@@ -5,7 +5,7 @@ class BaseProvider:
     tier = 1
     timeout = 30
 
-    def generate(self, prompt: str, is_fast: bool = False, max_tokens: int = 4096) -> str:
+    async def generate(self, prompt: str, is_fast: bool = False, max_tokens: int = 4096) -> str:
         raise NotImplementedError()
 
     def is_configured(self) -> bool:

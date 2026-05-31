@@ -43,10 +43,10 @@ def banner():
         providers.append("Gemini")
     if config.GROQ_API_KEY and not config.GROQ_API_KEY.startswith("your_"):
         providers.append("Groq")
-    if config.CEREBRAS_API_KEY and not config.CEREBRAS_API_KEY.startswith("your_"):
-        providers.append("Cerebras")
-    if config.OPENROUTER_API_KEY and not config.OPENROUTER_API_KEY.startswith("your_"):
-        providers.append("OpenRouter")
+    if config.MISTRAL_API_KEY and not config.MISTRAL_API_KEY.startswith("your_"):
+        providers.append("Mistral")
+    if config.GROK_API_KEY and not config.GROK_API_KEY.startswith("your_"):
+        providers.append("Grok")
     if config.NVIDIA_API_KEY and not config.NVIDIA_API_KEY.startswith("your_"):
         providers.append("NVIDIA")
     if config.POLLINATIONS_ENABLED:
@@ -138,12 +138,12 @@ def _startup_self_test() -> dict:
     if C.GROQ_API_KEY and not C.GROQ_API_KEY.startswith("your_"):
         free_providers_found.append("Groq")
         passed.append("PROVIDER: Groq API key present")
-    if C.CEREBRAS_API_KEY and not C.CEREBRAS_API_KEY.startswith("your_"):
-        free_providers_found.append("Cerebras")
-        passed.append("PROVIDER: Cerebras API key present")
-    if C.OPENROUTER_API_KEY and not C.OPENROUTER_API_KEY.startswith("your_"):
-        free_providers_found.append("OpenRouter")
-        passed.append("PROVIDER: OpenRouter API key present")
+    if C.MISTRAL_API_KEY and not C.MISTRAL_API_KEY.startswith("your_"):
+        free_providers_found.append("Mistral")
+        passed.append("PROVIDER: Mistral API key present")
+    if C.GROK_API_KEY and not C.GROK_API_KEY.startswith("your_"):
+        free_providers_found.append("Grok")
+        passed.append("PROVIDER: Grok API key present")
     if C.NVIDIA_API_KEY and not C.NVIDIA_API_KEY.startswith("your_"):
         free_providers_found.append("NVIDIA")
         passed.append("PROVIDER: NVIDIA API key present (optional free tier)")
@@ -248,8 +248,8 @@ def main():
     has_free = any([
         Config.GROQ_API_KEY and not Config.GROQ_API_KEY.startswith("your_"),
         Config.GEMINI_API_KEY and not Config.GEMINI_API_KEY.startswith("your_"),
-        Config.CEREBRAS_API_KEY and not Config.CEREBRAS_API_KEY.startswith("your_"),
-        Config.OPENROUTER_API_KEY and not Config.OPENROUTER_API_KEY.startswith("your_"),
+        Config.MISTRAL_API_KEY and not Config.MISTRAL_API_KEY.startswith("your_"),
+        Config.GROK_API_KEY and not Config.GROK_API_KEY.startswith("your_"),
         Config.NVIDIA_API_KEY and not Config.NVIDIA_API_KEY.startswith("your_"),
         Config.POLLINATIONS_ENABLED,
         Config.PUTER_ENABLED,
@@ -257,8 +257,8 @@ def main():
     ])
     if not has_free:
         print(f"\n{Fore.RED}❌ CRITICAL STARTUP ERROR: No approved free AI providers configured.\n"
-              f"   Please set at least one of: GROQ_API_KEY, GEMINI_API_KEY, CEREBRAS_API_KEY,\n"
-              f"   OPENROUTER_API_KEY, NVIDIA_API_KEY — or enable free fallbacks:\n"
+              f"   Please set at least one of: GROQ_API_KEY, GEMINI_API_KEY, MISTRAL_API_KEY,\n"
+              f"   GROK_API_KEY, NVIDIA_API_KEY — or enable free fallbacks:\n"
               f"   POLLINATIONS_ENABLED=true, PUTER_ENABLED=true, AI_HORDE_ENABLED=true{Style.RESET_ALL}\n")
         sys.exit(1)
 

@@ -496,7 +496,7 @@ body { background: var(--surface); font-family: 'Segoe UI', system-ui, sans-seri
         </div>
         <div class="mb-2">
           <label class="form-label text-muted" style="font-size:.8rem">Provider Order</label>
-          <input class="form-control form-control-sm" id="s-providers" placeholder="groq,gemini,cerebras,openrouter">
+          <input class="form-control form-control-sm" id="s-providers" placeholder="gemini,groq,mistral,grok">
         </div>
         <div class="mb-2">
           <label class="form-label text-muted" style="font-size:.8rem">Log Level</label>
@@ -529,12 +529,12 @@ body { background: var(--surface); font-family: 'Segoe UI', system-ui, sans-seri
             <input type="password" class="form-control form-control-sm" id="s-gemini" placeholder="AIza...">
           </div>
           <div class="col-md-6">
-            <label class="form-label text-muted" style="font-size:.8rem">Cerebras API Key</label>
-            <input type="password" class="form-control form-control-sm" id="s-cerebras" placeholder="csk_...">
+            <label class="form-label text-muted" style="font-size:.8rem">Mistral API Key</label>
+            <input type="password" class="form-control form-control-sm" id="s-mistral" placeholder="mistral-...">
           </div>
           <div class="col-md-6">
-            <label class="form-label text-muted" style="font-size:.8rem">OpenRouter API Key</label>
-            <input type="password" class="form-control form-control-sm" id="s-openrouter" placeholder="sk-or-...">
+            <label class="form-label text-muted" style="font-size:.8rem">Grok API Key</label>
+            <input type="password" class="form-control form-control-sm" id="s-grok" placeholder="grok-...">
           </div>
         </div>
         <div class="mt-2">
@@ -780,7 +780,7 @@ async function loadSettings() {
   set('s-voice',     s.TTS_VOICE_GENDER);
   set('s-wmin',      s.TARGET_WORD_COUNT_MIN || '800');
   set('s-wmax',      s.TARGET_WORD_COUNT_MAX || '1200');
-  set('s-providers', s.PROVIDER_ORDER || 'groq,gemini,cerebras,openrouter');
+  set('s-providers', s.PROVIDER_ORDER || 'gemini,groq,mistral,grok');
   set('s-loglevel',  s.LOG_LEVEL || 'INFO');
   set('s-cache',     s.CACHE_ENABLED !== 'false');
   set('s-music',     s.ENABLE_MUSIC !== 'false');
@@ -798,7 +798,7 @@ async function saveSettings() {
     CACHE_ENABLED: get('s-cache'), ENABLE_MUSIC: get('s-music'),
   };
   // API keys (only send if non-empty)
-  const keys = {groq:'s-groq', gemini:'s-gemini', cerebras:'s-cerebras', openrouter:'s-openrouter'};
+  const keys = {groq:'s-groq', gemini:'s-gemini', mistral:'s-mistral', grok:'s-grok'};
   for (const [k,id] of Object.entries(keys)) {
     const val = document.getElementById(id)?.value;
     if (val) settings[k.toUpperCase()+'_API_KEY'] = val;
@@ -1000,7 +1000,7 @@ async def api_save_settings(request: Request):
             "TARGET_AUDIENCE", "UPLOAD_HOUR", "UPLOAD_MINUTE", "TTS_VOICE_GENDER",
             "ENABLE_MUSIC", "PROVIDER_ORDER", "CACHE_ENABLED",
             "TARGET_WORD_COUNT_MIN", "TARGET_WORD_COUNT_MAX", "LOG_LEVEL",
-            "GROQ_API_KEY", "GEMINI_API_KEY", "CEREBRAS_API_KEY", "OPENROUTER_API_KEY",
+            "GROQ_API_KEY", "GEMINI_API_KEY", "MISTRAL_API_KEY", "GROK_API_KEY",
         }
         for k, v in data.items():
             if k in safe_keys and v:

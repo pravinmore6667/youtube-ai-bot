@@ -1,12 +1,15 @@
 import json, os, time, threading
 from dataclasses import dataclass, asdict
+from utils.logger import get_logger
+
+log = get_logger("HealthMonitor")
 
 METRICS_FILE = "logs/provider_metrics.log"
-HEALTH_FILE = "provider_health.json"
+HEALTH_FILE = "provider_status.json"
 
 @dataclass
 class ProviderHealthData:
-    healthy: bool = False
+    healthy: bool = True
     latency: float = 0.0
     success_rate: float = 100.0
     failures: int = 0
@@ -28,14 +31,32 @@ class HealthMonitor:
                 with open(HEALTH_FILE, "r") as f:
                     data = json.load(f)
                     for k, v in data.items():
-                        self.health_data[k] = ProviderHealthData(**v)
+                        # We might need to transform string status to boolean and back if needed
+                        if isinstance(v, str):
+                            self.health_data[k] = ProviderHealthData(healthy=(v == "healthy"))
+                        elif isinstance(v, dict):
+                            # Backward compat if reading full dataclass dict
+                            self.health_data[k] = ProviderHealthData(**v)
             except Exception:
                 pass
 
     def _save(self):
         with self._lock:
-            with open(HEALTH_FILE, "w") as f:
-                json.dump({k: asdict(v) for k, v in self.health_data.items()}, f, indent=2)
+            # We want to maintain provider_status.json like: {"gemini": "healthy", ...}
+            # But we also want to persist some stats. Let's save a simpler dict as requested:
+            output = {}
+            for k, v in self.health_data.items():
+                if v.cooldown_until > time.time():
+                    status = "degraded"
+                else:
+                    status = "healthy" if v.healthy else "degraded"
+                output[k] = status
+
+            try:
+                with open(HEALTH_FILE, "w") as f:
+                    json.dump(output, f, indent=2)
+            except Exception:
+                pass
 
     def init_provider(self, name: str):
         with self._lock:
@@ -69,8 +90,13 @@ class HealthMonitor:
             p.success_rate = (p.total_success / p.total_calls) * 100.0
             p.failures += 1
             p.last_failure_time = time.time()
+
+            # Circuit breaker: 5 consecutive failures = 15 min cooldown
             if is_rate_limit:
                 p.cooldown_until = time.time() + 60.0
+            elif p.failures >= 5:
+                p.cooldown_until = time.time() + (15 * 60) # 15 minutes
+                log.warning(f"Circuit Breaker OPEN for {name}. 15 min cooldown.")
             else:
                 p.cooldown_until = time.time() + min(300, (2 ** p.failures))
 
@@ -83,7 +109,8 @@ class HealthMonitor:
             with open(METRICS_FILE, "a") as f:
                 ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
                 status = "SUCCESS" if success else "FAILURE"
-                f.write(f"[{ts}] provider={name} latency={latency:.2f}s status={status} error={error}\\n")
+                err_str = error.replace("\n", " ")[:200]
+                f.write(f"[{ts}] provider={name} latency={latency:.2f}s status={status} error={err_str}\n")
         except Exception:
             pass
 
@@ -91,6 +118,12 @@ class HealthMonitor:
         with self._lock:
             if name not in self.health_data:
                 self.health_data[name] = ProviderHealthData()
+
+            # Half-open logic: if cooldown has passed, allow testing
+            if not self.health_data[name].healthy and self.health_data[name].cooldown_until < time.time():
+                # We do not mark it healthy yet, but it's available for one request
+                pass
+
         return self.health_data[name]
 
 monitor = HealthMonitor()

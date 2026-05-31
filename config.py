@@ -17,12 +17,12 @@ load_dotenv()
 class Config:
     _warned = False
 
-    # ── AI Providers — APPROVED FREE PROVIDERS ──────────────
+    # ── AI Providers ─────────────────────────────────────────
     GROQ_API_KEY        = os.getenv("GROQ_API_KEY",        "")
     GEMINI_API_KEY      = os.getenv("GEMINI_API_KEY",      "")
-    CEREBRAS_API_KEY    = os.getenv("CEREBRAS_API_KEY",    "")
-    OPENROUTER_API_KEY  = os.getenv("OPENROUTER_API_KEY",  "")  # free models only
-    NVIDIA_API_KEY      = os.getenv("NVIDIA_API_KEY",      "")  # optional: free tier
+    MISTRAL_API_KEY     = os.getenv("MISTRAL_API_KEY",     "")
+    GROK_API_KEY        = os.getenv("GROK_API_KEY",        "")
+    NVIDIA_API_KEY      = os.getenv("NVIDIA_API_KEY",      "")
 
     # ── Always-Free Fallbacks ────────────────────────────────
     POLLINATIONS_ENABLED = os.getenv("POLLINATIONS_ENABLED", "true").lower() == "true"
@@ -30,11 +30,11 @@ class Config:
     AI_HORDE_ENABLED     = os.getenv("AI_HORDE_ENABLED",     "true").lower() == "true"
 
     # ── PAID PROVIDERS — BLOCKED ──────────────────────────────
-    # Together AI, DeepInfra, SambaNova, Grok are not part of the approved
+    # Together AI, DeepInfra, SambaNova are not part of the approved
     # free architecture. Any configured values are silently ignored.
     # These constants remain for backward-compatibility detection only.
     _BLOCKED_PROVIDERS = ["TOGETHER_API_KEY", "DEEPINFRA_API_KEY",
-                          "SAMBANOVA_API_KEY", "GROK_API_KEY"]
+                          "SAMBANOVA_API_KEY"]
 
     # ── Media APIs ────────────────────────────────────────────
     PEXELS_API_KEY      = os.getenv("PEXELS_API_KEY",      "")
@@ -60,7 +60,7 @@ class Config:
 
     # ── Provider settings ─────────────────────────────────────
     # Default order: approved free providers only
-    PROVIDER_ORDER      = os.getenv("PROVIDER_ORDER",   "gemini,groq,cerebras,nvidia,openrouter")
+    PROVIDER_ORDER      = os.getenv("PROVIDER_ORDER",   "gemini,groq,mistral,grok")
     MAX_RETRIES         = int(os.getenv("MAX_RETRIES",   "3"))
     RETRY_DELAY_SEC     = float(os.getenv("RETRY_DELAY",  "2"))
 
@@ -125,7 +125,7 @@ def _check_blocked_providers():
     """Warn if any blocked paid provider is set in environment."""
     blocked_detected = []
     blocked_env_keys = ["TOGETHER_API_KEY", "DEEPINFRA_API_KEY",
-                        "SAMBANOVA_API_KEY", "GROK_API_KEY"]
+                        "SAMBANOVA_API_KEY"]
     for key in blocked_env_keys:
         val = os.getenv(key, "")
         if val and not val.startswith("your_"):
@@ -178,8 +178,8 @@ def check_keys():
     has_free_provider = any([
         Config.GEMINI_API_KEY and not Config.GEMINI_API_KEY.startswith("your_"),
         Config.GROQ_API_KEY and not Config.GROQ_API_KEY.startswith("your_"),
-        Config.CEREBRAS_API_KEY and not Config.CEREBRAS_API_KEY.startswith("your_"),
-        Config.OPENROUTER_API_KEY and not Config.OPENROUTER_API_KEY.startswith("your_"),
+        Config.MISTRAL_API_KEY and not Config.MISTRAL_API_KEY.startswith("your_"),
+        Config.GROK_API_KEY and not Config.GROK_API_KEY.startswith("your_"),
         Config.NVIDIA_API_KEY and not Config.NVIDIA_API_KEY.startswith("your_"),
         Config.POLLINATIONS_ENABLED,
         Config.PUTER_ENABLED,
@@ -188,8 +188,8 @@ def check_keys():
 
     if not has_free_provider:
         logging.warning(
-            "Missing required configuration: at least one approved free AI provider "
-            "(GROQ_API_KEY, GEMINI_API_KEY, CEREBRAS_API_KEY, OPENROUTER_API_KEY, "
+        "Missing required configuration: at least one approved AI provider "
+        "(GEMINI_API_KEY, GROQ_API_KEY, MISTRAL_API_KEY, GROK_API_KEY, "
             "NVIDIA_API_KEY) or enable free fallbacks (POLLINATIONS_ENABLED, "
             "PUTER_ENABLED, AI_HORDE_ENABLED)"
         )

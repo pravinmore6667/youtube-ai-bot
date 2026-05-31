@@ -3,23 +3,23 @@ from config import config
 from router.provider_manager import BaseProvider, manager
 from utils.logger import get_logger
 
-log = get_logger("GroqProvider")
+log = get_logger("MistralProvider")
 
-class GroqProvider(BaseProvider):
-    name = "groq"
-    tier = 3
-    timeout = 10
+class MistralProvider(BaseProvider):
+    name = "mistral"
+    tier = 4
+    timeout = 15
 
     def is_configured(self) -> bool:
-        return bool(config.GROQ_API_KEY) and not config.GROQ_API_KEY.startswith("your_")
+        return bool(config.MISTRAL_API_KEY) and not config.MISTRAL_API_KEY.startswith("your_")
 
     async def generate(self, prompt: str, is_fast: bool = False, max_tokens: int = 4096) -> str:
-        model = "llama-3.1-8b-instant" if is_fast else "llama-3.3-70b-versatile"
+        model = "mistral-small" if is_fast else "mistral-medium"
         self.current_model = model
 
-        url = "https://api.groq.com/openai/v1/chat/completions"
+        url = "https://api.mistral.ai/v1/chat/completions"
         headers = {
-            "Authorization": f"Bearer {config.GROQ_API_KEY}",
+            "Authorization": f"Bearer {config.MISTRAL_API_KEY}",
             "Content-Type": "application/json"
         }
         payload = {
@@ -36,6 +36,6 @@ class GroqProvider(BaseProvider):
                     return data["choices"][0]["message"]["content"].strip()
                 else:
                     text = await resp.text()
-                    raise RuntimeError(f"Groq error {resp.status}: {text}")
+                    raise RuntimeError(f"Mistral error {resp.status}: {text}")
 
-manager.register(GroqProvider())
+manager.register(MistralProvider())

@@ -1,6 +1,11 @@
+import aiohttp
+import json
 from config import config
 from router.provider_manager import BaseProvider, manager
-import google.genai as genai
+from router.gemini_pool import pool
+from utils.logger import get_logger
+
+log = get_logger("GeminiProvider")
 
 class GeminiProvider(BaseProvider):
     name = "gemini"
@@ -8,20 +13,43 @@ class GeminiProvider(BaseProvider):
     timeout = 20
 
     def is_configured(self) -> bool:
-        return bool(config.GEMINI_API_KEY) and not config.GEMINI_API_KEY.startswith("your_")
+        return len(pool.get_all_keys()) > 0
 
-    def generate(self, prompt: str, is_fast: bool = False, max_tokens: int = 4096) -> str:
-        client = genai.Client(api_key=config.GEMINI_API_KEY)
-        model = "gemini-2.0-flash" if is_fast else "gemini-2.5-pro" # or whatever reasoning model
+    async def generate(self, prompt: str, is_fast: bool = False, max_tokens: int = 4096) -> str:
+        key_obj = pool.get_active_key()
+        if not key_obj:
+            raise RuntimeError("All Gemini keys are exhausted or in cooldown.")
 
-        # Fallback to flash if pro fails/not found. Actually we'll just use flash since it's free tier best.
-        model = "gemini-2.0-flash"
+        model = "gemini-2.5-flash" if is_fast else "gemini-2.0-flash"
+        self.current_model = model
 
-        resp = client.models.generate_content(
-            model=model,
-            contents=prompt,
-            config={'temperature': 0.35, 'max_output_tokens': max_tokens}
-        )
-        return resp.text.strip()
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key_obj.key}"
+
+        payload = {
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {
+                "temperature": 0.35,
+                "maxOutputTokens": max_tokens
+            }
+        }
+
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, json=payload, timeout=self.timeout) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    key_obj.mark_success()
+                    try:
+                        return data["candidates"][0]["content"]["parts"][0]["text"].strip()
+                    except (KeyError, IndexError):
+                        raise ValueError(f"Unexpected response format from Gemini: {data}")
+                elif resp.status == 429:
+                    # 429 Too Many Requests
+                    key_obj.mark_exhausted()
+                    raise RuntimeError("Gemini rate limit exceeded.")
+                else:
+                    text = await resp.text()
+                    if "RESOURCE_EXHAUSTED" in text or "quota exceeded" in text.lower():
+                        key_obj.mark_exhausted()
+                    raise RuntimeError(f"Gemini error {resp.status}: {text}")
 
 manager.register(GeminiProvider())

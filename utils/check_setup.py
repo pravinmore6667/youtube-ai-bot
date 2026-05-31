@@ -43,36 +43,32 @@ def check_env():
     return all_ok
 
 
-def check_gemini():
-    print(f"\n{Fore.WHITE}── Gemini API ───────────────────────────────{Style.RESET_ALL}")
-    try:
-        import google.genai as genai
-        from config import config
-        client = genai.Client(api_key=config.GEMINI_API_KEY)
-        models = [m.name for m in client.models.list() if "gemini" in m.name.lower()]
-        if not models:
-            fail("API key works but no models available — try a different key")
-            return False
-        ok(f"API key valid — {len(models)} models available")
-        # Show which model will be used
-        preferred = ["gemini-2.0-flash","gemini-1.5-flash","gemini-1.5-flash-latest"]
-        for p in preferred:
-            if any(p in m for m in models):
-                ok(f"Will use: {p}"); return True
-        warn(f"Using fallback: {models[0]}")
-        return True
-    except Exception as e:
-        err = str(e)
-        if "API_KEY_INVALID" in err or "API key not valid" in err:
-            fail("Gemini key is INVALID\n"
-                 "     → Go to: https://aistudio.google.com/apikey\n"
-                 "     → Click 'Create API key'\n"
-                 "     → Paste the new key into .env as GEMINI_API_KEY=AIza...")
-        elif "quota" in err.lower():
-            warn("Gemini quota exceeded — wait 1 minute and try again")
+import asyncio
+
+def check_providers():
+    print(f"\n{Fore.WHITE}── AI Providers ───────────────────────────────{Style.RESET_ALL}")
+    import router.provider_manager
+    from router.provider_manager import manager
+    from router.gemini_pool import pool
+
+    gemini_keys = pool.get_all_keys()
+    if gemini_keys:
+        ok(f"Loaded Gemini Keys: {len(gemini_keys)}")
+    else:
+        warn("No Gemini Keys found")
+
+    for provider_name, provider in manager.providers.items():
+        if provider.is_configured():
+            ok(f"{provider_name.capitalize()}: OK")
         else:
-            fail(f"Gemini error: {err}")
+            if provider_name in ["gemini", "groq", "mistral", "grok"]:
+                warn(f"{provider_name.capitalize()}: Not Configured")
+
+    if not any(p.is_configured() for p in manager.providers.values()):
+        fail("No AI providers are correctly configured. Bot cannot run.")
         return False
+
+    return True
 
 
 def check_pexels():
@@ -217,7 +213,7 @@ def run_all():
 
     results = []
     results.append(("API Keys in .env",    check_env()))
-    results.append(("Gemini AI",           check_gemini()))
+    results.append(("AI Providers",        check_providers()))
     results.append(("Pexels footage",      check_pexels()))
     results.append(("Pixabay footage",     check_pixabay()))
     results.append(("YouTube upload",      check_youtube()))

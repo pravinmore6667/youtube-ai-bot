@@ -1,5 +1,5 @@
-import time, json
-from typing import Dict, Any
+import time, json, asyncio
+from typing import Dict, Any, Optional
 from utils.logger import get_logger
 from router.provider_manager import manager
 from router.health_monitor import monitor
@@ -12,48 +12,72 @@ def _is_rate_limit(err: str) -> bool:
     kws = ["429", "rate_limit", "rate limit", "quota", "resource_exhausted", "too many requests"]
     return any(k in err.lower() for k in kws)
 
-def ask(prompt: str, is_fast: bool = False, max_tokens: int = 4096) -> str:
-    """Intelligent routing with failover."""
+from router.token_optimizer import optimize_prompt
+from router.response_cache import get_cached_response, set_cached_response
+
+async def ask(prompt: str, is_fast: bool = False, max_tokens: int = 4096) -> str:
+    """Intelligent routing with failover. Fast execution mode."""
+
+    prompt = optimize_prompt(prompt)
+    cached = get_cached_response(prompt)
+    if cached:
+        log.info("Returning cached response.")
+        return cached
+
     last_err = None
 
-    # We will try up to 4 different providers before giving up
-    attempted = set()
+    # Prioritize providers: Gemini -> Mistral -> Groq -> Grok
+    # We will query failover_engine to get sorted candidates
+    candidates = []
 
-    for attempt in range(4):
-        provider_name = get_best_provider()
-        if not provider_name:
-            # If all are in cooldown, wait and retry
-            wait = 10
-            for name in manager.providers.keys():
-                h = monitor.get_health(name)
-                if h.cooldown_until > time.time():
-                    w = h.cooldown_until - time.time()
-                    if w < wait: wait = w
-            log.warning(f"All providers exhausted/cooldown. Waiting {wait:.1f}s...")
-            time.sleep(max(1, wait))
-            provider_name = get_best_provider()
-            if not provider_name:
-                continue
+    # Fast Execution Mode:
+    # Provider -> Retry Once -> Next Provider
 
-        if provider_name in attempted:
-            continue
+    provider_names = []
 
-        attempted.add(provider_name)
+    # Get all configured and non-cooldown providers from failover engine (we'll update failover_engine to return list)
+    from router.failover_engine import get_ordered_providers
+    available_providers = get_ordered_providers()
+
+    if not available_providers:
+        # Check if all are in cooldown
+        wait = 10
+        for name in manager.providers.keys():
+            h = monitor.get_health(name)
+            if h.cooldown_until > time.time():
+                w = h.cooldown_until - time.time()
+                if w < wait: wait = w
+        log.warning(f"All providers exhausted/cooldown. Waiting {wait:.1f}s...")
+        await asyncio.sleep(max(1, wait))
+        available_providers = get_ordered_providers()
+
+    if not available_providers:
+        raise RuntimeError("All AI providers failed or are unconfigured.")
+
+    for provider_name in available_providers:
         provider = manager.providers[provider_name]
 
-        t0 = time.time()
-        try:
-            log.debug(f"Routing to {provider_name} (tier {provider.tier})...")
-            result = provider.generate(prompt, is_fast=is_fast, max_tokens=max_tokens)
-            latency = time.time() - t0
-            monitor.record_success(provider_name, latency)
-            return result
-        except Exception as e:
-            err_str = str(e)
-            is_rl = _is_rate_limit(err_str)
-            monitor.record_failure(provider_name, err_str, is_rate_limit=is_rl)
-            log.warning(f"{provider_name} failed: {err_str[:60]} -> switching provider")
-            last_err = e
+        # Retry once per provider
+        for attempt in range(2):
+            t0 = time.time()
+            try:
+                log.debug(f"Routing to {provider_name} (attempt {attempt+1})...")
+                result = await provider.generate(prompt, is_fast=is_fast, max_tokens=max_tokens)
+                latency = time.time() - t0
+                log.info(f"[{provider_name}] Model={getattr(provider, 'current_model', 'unknown')} Latency={latency:.2f}s Tokens={len(result.split())} Status=Success")
+                monitor.record_success(provider_name, latency)
+                set_cached_response(prompt, result)
+                return result
+            except Exception as e:
+                err_str = str(e)
+                is_rl = _is_rate_limit(err_str)
+                monitor.record_failure(provider_name, err_str, is_rate_limit=is_rl)
+                last_err = e
+                log.warning(f"[{provider_name}] Model={getattr(provider, 'current_model', 'unknown')} Latency={time.time() - t0:.2f}s Status=Error Error=\"{err_str[:60]}\"")
+
+                if is_rl:
+                    # Rate limit hit, skip second attempt for this provider and move to next
+                    break
 
     raise RuntimeError(f"All AI providers failed. Last error: {last_err}")
 
@@ -66,33 +90,36 @@ def _parse_json(raw: str) -> dict:
     if s != -1 and e != -1:
         raw = raw[s:e+1]
 
-    # Try direct parse
     try:
         return json.loads(raw)
     except json.JSONDecodeError:
         pass
 
-    # Attempt heuristic cleanup
     raw = re.sub(r'```json\s*', '', raw)
     raw = re.sub(r'```\s*', '', raw)
-    # Remove trailing commas
     raw = re.sub(r',\s*}', '}', raw)
     raw = re.sub(r',\s*]', ']', raw)
-    return json.loads(raw)
+    try:
+        return json.loads(raw)
+    except:
+        return {}
 
-def ask_json(prompt: str, is_fast: bool = False, max_tokens: int = 4096, retries: int = 2) -> dict:
+async def ask_json(prompt: str, is_fast: bool = False, max_tokens: int = 4096, retries: int = 2) -> dict:
     full_prompt = prompt + "\n\nIMPORTANT: Return STRICT JSON only. No markdown. No code blocks. Must be valid json.loads() input."
     last_err = None
     for attempt in range(retries + 1):
         try:
-            raw = ask(full_prompt, is_fast=is_fast, max_tokens=max_tokens)
-            return _parse_json(raw)
+            raw = await ask(full_prompt, is_fast=is_fast, max_tokens=max_tokens)
+            res = _parse_json(raw)
+            if res: return res
+            raise ValueError("Parsed JSON is empty.")
         except Exception as e:
             last_err = e
             log.warning(f"JSON parse failed (attempt {attempt+1}): {e}")
     raise ValueError(f"AI returned invalid JSON: {last_err}")
 
 def get_status() -> dict:
+    from router.failover_engine import get_best_provider
     active = get_best_provider() or "none"
     healthy = sum(1 for p in manager.providers.keys() if monitor.get_health(p).healthy)
     failed = sum(1 for p in manager.providers.keys() if not monitor.get_health(p).healthy)
